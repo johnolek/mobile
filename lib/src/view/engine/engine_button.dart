@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:lichess_mobile/src/model/common/eval.dart';
+import 'package:lichess_mobile/src/model/engine/engine_spec.dart';
 import 'package:lichess_mobile/src/model/engine/engine_utils.dart';
 import 'package:lichess_mobile/src/model/engine/evaluation_preferences.dart';
+import 'package:lichess_mobile/src/model/engine/external_engine_repository.dart';
 import 'package:lichess_mobile/src/model/engine/position_evaluator.dart';
 import 'package:lichess_mobile/src/utils/l10n_context.dart';
 import 'package:lichess_mobile/src/widgets/bottom_bar.dart';
@@ -13,69 +15,73 @@ import 'package:lichess_mobile/src/widgets/popover.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// A button to toggle engine evaluation and show engine depth.
+///
+/// The chip is in the accent color when the engine is enabled, and filled while it is computing.
 class const EngineButton({
   required final EngineEvaluationFilters filters,
   final VoidCallback? onTap,
   final ClientEval? savedEval,
   final VoidCallback? goDeeper,
-}) extends ConsumerStatefulWidget {
+}) extends ConsumerWidget {
   @override
-  ConsumerState<EngineButton> createState() => _EngineButtonState();
-}
-
-class _EngineButtonState() extends ConsumerState<EngineButton> {
-  late Color fromChipColor;
-  Color? toChipColor;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(engineEvaluationPreferencesProvider);
     final (:engine, :engineSpec, eval: localEval, :isComputing, currentWork: _) = ref.watch(
-      engineEvaluationProvider(widget.filters),
+      engineEvaluationProvider(filters),
     );
-    final eval = pickBestClientEval(localEval: localEval, savedEval: widget.savedEval);
+    final chosenExternalEngine = ref.watch(chosenExternalEngineProvider(filters.context));
+    final eval = pickBestClientEval(localEval: localEval, savedEval: savedEval);
 
-    final newChipColor = prefs.isEnabled
-        ? isComputing
-              ? ColorScheme.of(context).primary
-              : ColorScheme.of(context).primary.withValues(alpha: 0.65)
-        : IconTheme.of(context).color ?? TextTheme.of(context).bodyMedium!.color!;
-
-    fromChipColor = toChipColor ?? newChipColor;
-    toChipColor = newChipColor;
-
+    final colorScheme = ColorScheme.of(context);
     final textColor = prefs.isEnabled
-        ? ColorScheme.of(context).primary
+        ? colorScheme.primary
         : IconTheme.of(context).color ?? TextTheme.of(context).bodyMedium!.color!;
+    final isFilled = prefs.isEnabled && isComputing;
+    final chipContentColor = isFilled ? colorScheme.onPrimary : textColor;
 
-    final loadingIndicator = SpinKitFadingFour(color: textColor.withValues(alpha: 0.7), size: 10);
+    final loadingIndicator = SpinKitFadingFour(color: chipContentColor, size: 10);
 
     const microChipSize = 28.0;
     final iconTextStyle = TextStyle(
-      color: textColor,
+      color: chipContentColor,
       fontFeatures: const [FontFeature.tabularFigures()],
       fontWeight: FontWeight.w600,
       fontSize: 11,
     );
 
+    final badge = !prefs.isEnabled
+        ? null
+        : engineSpec is ExternalEngineSpec
+        ? 'EXT'
+        : eval is CloudEval
+        ? 'CLOUD'
+        : null;
+
     final chip = Badge(
       offset: const Offset(4, -7),
       backgroundColor: ColorScheme.of(context).tertiaryContainer,
       textColor: ColorScheme.of(context).onTertiaryContainer,
-      label: prefs.isEnabled && eval is CloudEval ? const Text('CLOUD') : null,
+      label: badge != null ? Text(badge) : null,
       textStyle: const TextStyle(fontSize: 8),
-      isLabelVisible: prefs.isEnabled && eval is CloudEval,
+      isLabelVisible: badge != null,
       child: Stack(
         alignment: Alignment.center,
         children: [
           TweenAnimationBuilder<Color?>(
             curve: Curves.easeInOut,
-            tween: ColorTween(begin: fromChipColor, end: toChipColor),
+            tween: ColorTween(end: textColor),
             duration: const Duration(milliseconds: 300),
             builder: (BuildContext context, Color? color, Widget? _) {
-              return CustomPaint(
-                size: const Size(microChipSize, microChipSize),
-                painter: MicroChipPainter(color ?? toChipColor!),
+              return TweenAnimationBuilder<double>(
+                curve: Curves.easeInOut,
+                tween: Tween(end: isFilled ? 1.0 : 0.0),
+                duration: const Duration(milliseconds: 300),
+                builder: (BuildContext context, double fill, Widget? _) {
+                  return CustomPaint(
+                    size: const Size(microChipSize, microChipSize),
+                    painter: MicroChipPainter(color ?? textColor, fill: fill),
+                  );
+                },
               );
             },
           ),
@@ -106,28 +112,22 @@ class _EngineButtonState() extends ConsumerState<EngineButton> {
     );
 
     final engineLabel =
-        engineShortLabel(engine?.value, spec: engineSpec) ?? prefs.enginePref.shortLabel;
-    final engineLabelStyle = TextStyle(
-      fontSize: 10,
-      fontWeight: FontWeight.w700,
-      color: textColor.withValues(alpha: 0.8),
-    );
+        engineShortLabel(engine?.value, spec: engineSpec) ??
+        chosenExternalEngine?.name ??
+        prefs.enginePref.shortLabel;
+    final engineLabelStyle = TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textColor);
 
     return PlatformPopover(
       width: 250,
       direction: PopoverDirection.top,
       // The engine details are content, hard to read on glass over the board.
       opaque: true,
-      bodyBuilder: (_) => _EnginePopup(
-        goDeeper: widget.goDeeper,
-        filters: widget.filters,
-        savedEval: widget.savedEval,
-      ),
+      bodyBuilder: (_) => _EnginePopup(goDeeper: goDeeper, filters: filters, savedEval: savedEval),
       triggerBuilder: (context, showPopover) => BottomBar.isGlass(context)
           // A capsule is too short for the label below the chip.
           ? BottomBarGlassButton(
               semanticsLabel: context.l10n.toggleLocalEvaluation,
-              onTap: widget.onTap,
+              onTap: onTap,
               onLongPress: showPopover,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -135,25 +135,43 @@ class _EngineButtonState() extends ConsumerState<EngineButton> {
                 children: [
                   chip,
                   // The net size goes on its own line, to keep the capsule narrow.
-                  Text(
-                    engineLabel.replaceFirst(' $lightNetSizeMB', '\n$lightNetSizeMB'),
-                    style: engineLabelStyle.copyWith(height: 1.1),
+                  Flexible(
+                    child: Text(
+                      engineLabel.replaceFirst(' $lightNetSizeMB', '\n$lightNetSizeMB'),
+                      style: engineLabelStyle.copyWith(height: 1.1),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
             )
-          : Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                SemanticIconButton(
-                  semanticsLabel: context.l10n.toggleLocalEvaluation,
-                  onPressed: widget.onTap,
-                  onLongPress: showPopover,
-                  icon: chip,
-                ),
-                Positioned(bottom: -6, child: Text(engineLabel, style: engineLabelStyle)),
-              ],
+          : LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  SemanticIconButton(
+                    semanticsLabel: context.l10n.toggleLocalEvaluation,
+                    onPressed: onTap,
+                    onLongPress: showPopover,
+                    icon: chip,
+                  ),
+                  Positioned(
+                    bottom: -6,
+                    // No wider than the button's place in the bar.
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                      child: Text(
+                        engineLabel,
+                        style: engineLabelStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -201,7 +219,9 @@ class const EngineToggleButton({
   }
 }
 
-class const MicroChipPainter(final Color color) extends CustomPainter {
+/// Paints a micro chip, whose core is filled with [color] in proportion to [fill], from 0 (outlined)
+/// to 1 (filled).
+class const MicroChipPainter(final Color color, {final double fill = 0.0}) extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const pinLength = 3.5;
@@ -315,11 +335,20 @@ class const MicroChipPainter(final Color color) extends CustomPainter {
 
     canvas.drawPath(outerRimPath, outerStrokePaint);
     canvas.drawPath(pinsPath, fillPaint);
+    if (fill > 0) {
+      canvas.drawPath(
+        innerSquarePath,
+        Paint()
+          ..color = color.withValues(alpha: color.a * fill)
+          ..style = PaintingStyle.fill,
+      );
+    }
     canvas.drawPath(innerSquarePath, innerStrokePaint);
   }
 
   @override
-  bool shouldRepaint(covariant MicroChipPainter oldDelegate) => color != oldDelegate.color;
+  bool shouldRepaint(covariant MicroChipPainter oldDelegate) =>
+      color != oldDelegate.color || fill != oldDelegate.fill;
 }
 
 class const _EnginePopup({
@@ -354,11 +383,18 @@ class const _EnginePopup({
 
     final knps = isComputing ? ', ${localEval?.knps.round()}kn/s' : '';
 
-    final displayName = engineDisplayName(engine?.value, spec: engineSpec);
+    final externalEngine = switch (engineSpec) {
+      ExternalEngineSpec(:final engine) => engine,
+      null => ref.watch(chosenExternalEngineProvider(filters.context)),
+      _ => null,
+    };
+    final displayName = externalEngine?.name ?? engineDisplayName(engine?.value, spec: engineSpec);
 
     return ListTile(
       contentPadding: const EdgeInsets.only(left: 16.0),
-      leading: Image.asset('assets/images/stockfish/icon.webp', width: 44, height: 44),
+      leading: externalEngine != null
+          ? const Icon(Icons.computer, size: 44)
+          : Image.asset('assets/images/stockfish/icon.webp', width: 44, height: 44),
       title: Text(displayName),
       subtitle: currentEval != null ? Text(context.l10n.depthX('${currentEval.depth}$knps')) : null,
       trailing: canGoDeeper
