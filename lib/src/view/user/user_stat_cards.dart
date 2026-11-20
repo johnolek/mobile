@@ -4,7 +4,7 @@ import 'package:lichess_mobile/src/utils/l10n_context.dart';
 import 'package:lichess_mobile/src/utils/string.dart';
 import 'package:material_ui/material_ui.dart';
 
-const _shadeOpacity = 0.6;
+const _shadeOpacity = 0.7;
 const _valueStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 22);
 
 String _formatPercentage(int value, int total) =>
@@ -61,7 +61,7 @@ class const GameResultsCard({
                         label: context.l10n.wins,
                         count: won,
                         total: total,
-                        color: context.lichessColors.good,
+                        color: context.lichessColors.green,
                       ),
                     ),
                     const VerticalDivider(width: 24.0),
@@ -74,7 +74,7 @@ class const GameResultsCard({
                         label: context.l10n.losses,
                         count: lost,
                         total: total,
-                        color: context.lichessColors.error,
+                        color: context.lichessColors.red,
                       ),
                     ),
                   ],
@@ -94,9 +94,9 @@ class const _ResultsBar({required final int won, required final int drawn, requi
   @override
   Widget build(BuildContext context) {
     final segments = [
-      (won, context.lichessColors.good),
+      (won, context.lichessColors.green),
       (drawn, textShade(context, 0.3)),
-      (lost, context.lichessColors.error),
+      (lost, context.lichessColors.red),
     ].where((segment) => segment.$1 > 0);
     return ExcludeSemantics(
       child: SizedBox(
@@ -215,7 +215,13 @@ class const IconStatRow({
         children: [
           Icon(icon, color: textShade(context, _shadeOpacity)),
           Expanded(
-            child: Column(crossAxisAlignment: .start, children: [Text(label), ?subtitle]),
+            child: Column(
+              crossAxisAlignment: .start,
+              children: [
+                Text(label, style: TextStyle(color: textShade(context, _shadeOpacity))),
+                ?subtitle,
+              ],
+            ),
           ),
           Column(
             crossAxisAlignment: .end,

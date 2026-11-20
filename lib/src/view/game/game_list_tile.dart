@@ -31,9 +31,7 @@ import 'package:lichess_mobile/src/widgets/user.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
-DateFormat get _dateFormatter => DateFormat.yMMMd().add_Hm();
-
-DateFormat get _timeFormatter => DateFormat.Hm();
+DateFormat get _dateFormatter => DateFormat.yMMMd();
 
 /// A list tile for a game in a game list.
 class const GameListTile({
@@ -67,14 +65,16 @@ class const GameListTile({
             name: opponent.name,
             aiLevel: opponent.aiLevel,
             rating: opponent.rating,
+            provisional: opponent.provisional,
           );
 
-    // For an imported game, `lastMoveAt` is the import date, so prefer the PGN date if we have it.
+    // Like the website, show when the game started. For an imported game that's the import date, so
+    // prefer the PGN date if we have it.
     final date = game.importDate != null
         ? formatPgnDate(game.importDate!, shortDate: false)
         : timeOnly
-        ? _timeFormatter.format(game.createdAt)
-        : relativeDate(context.l10n, game.lastMoveAt, shortDate: false);
+        ? formatTimeOfDay(context, game.createdAt)
+        : relativeDate(context.l10n, game.createdAt, shortDate: false);
 
     final showRatings = switch (ref.watch(showRatingsPrefProvider)) {
       AsyncData(:final value) => value != ShowRatings.no,
@@ -88,10 +88,10 @@ class const GameListTile({
     final resultColor = isAborted
         ? LichessColors.grey
         : game.winner == null
-        ? context.lichessColors.brag
+        ? textShade(context, Styles.subtitleOpacity)
         : game.winner == youAre
-        ? context.lichessColors.good
-        : context.lichessColors.error;
+        ? context.lichessColors.green
+        : context.lichessColors.red;
 
     // The rating change when there is one, else a symbol of the result.
     final result = ratingDiff != null && !isAborted
@@ -132,6 +132,7 @@ class const GameListTile({
             : isTournament
             ? LichessIcons.tournament_cup
             : game.perf.icon,
+        color: perfIconColor(context),
       ),
       title: title,
       subtitle: Text.rich(
@@ -150,19 +151,24 @@ class const GameListTile({
               const TextSpan(text: ' '),
             ],
             TextSpan(text: date),
-            if (!game.isImported) ...[
-              const TextSpan(text: '  '),
-              TextSpan(
-                text: result,
-                style: TextStyle(color: resultColor, fontWeight: FontWeight.w600),
-              ),
-            ],
           ],
         ),
       ),
-      trailing: me.analysis != null
-          ? Icon(CupertinoIcons.chart_bar_alt_fill, color: textShade(context, 0.3))
-          : null,
+      trailing: game.isImported && me.analysis == null
+          ? null
+          : Row(
+              mainAxisSize: .min,
+              spacing: 8.0,
+              children: [
+                if (me.analysis != null)
+                  Icon(CupertinoIcons.chart_bar_alt_fill, color: textShade(context, 0.3)),
+                if (!game.isImported)
+                  Text(
+                    result,
+                    style: TextStyle(color: resultColor, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
     );
   }
 }
@@ -222,7 +228,7 @@ class const GameContextMenu({
                                   style: const TextStyle(fontWeight: FontWeight.w500),
                                 ),
                                 Text(
-                                  _dateFormatter.format(game.lastMoveAt),
+                                  '${_dateFormatter.format(game.createdAt)} ${formatTimeOfDay(context, game.createdAt)}',
                                   style: TextStyle(
                                     color: textShade(context, Styles.subtitleOpacity),
                                     fontSize: 12,
@@ -266,10 +272,10 @@ class const GameContextMenu({
                                 ),
                                 style: TextStyle(
                                   color: game.winner == null
-                                      ? context.lichessColors.brag
+                                      ? textShade(context, Styles.subtitleOpacity)
                                       : game.winner == mySide
-                                      ? context.lichessColors.good
-                                      : context.lichessColors.error,
+                                      ? context.lichessColors.green
+                                      : context.lichessColors.red,
                                 ),
                               ),
                             if (game.opening != null)

@@ -5,6 +5,17 @@ import 'package:lichess_mobile/src/styles/lichess_colors.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
 import 'package:material_ui/material_ui.dart';
 
+/// The opacity of the blog and broadcast carousel cards.
+const kDefaultCardOpacity = 0.9;
+
+/// The opacity of the blog and broadcast carousel card images on a dark background, where their
+/// light colors would otherwise stand out too much.
+const kDarkCardImageOpacity = 0.80;
+
+/// The opacity of the blog and broadcast carousel card backgrounds on a dark background: higher
+/// than [kDarkCardImageOpacity] so that the text on it keeps enough contrast.
+const kDarkCardBackgroundOpacity = 0.9;
+
 // ignore: avoid_classes_with_only_static_members
 abstract class Styles() {
   // text
@@ -18,9 +29,7 @@ abstract class Styles() {
   static const subtitleOpacity = 0.7;
   static const timeControl = TextStyle(letterSpacing: 1.2);
   static const formLabel = TextStyle(fontWeight: FontWeight.bold);
-  static const formError = TextStyle(color: LichessColors.red);
   static const formDescription = TextStyle(fontSize: 12);
-  static const linkStyle = TextStyle(color: Colors.blueAccent, decoration: TextDecoration.none);
   static const noResultTextStyle = TextStyle(color: Colors.grey, fontSize: 20.0);
 
   // padding
@@ -41,6 +50,11 @@ abstract class Styles() {
   static const boardBorderRadius = BorderRadius.all(Radius.circular(5.0));
 
   static const thumbnailBorderRadius = BorderRadius.all(Radius.circular(5.0));
+
+  static TextStyle linkStyle(BuildContext context) {
+    final primary = ColorScheme.of(context).primary;
+    return TextStyle(color: primary, decoration: TextDecoration.none, decorationColor: primary);
+  }
 
   static Color chartColor(BuildContext context) {
     return ColorScheme.of(context).tertiary;
@@ -68,6 +82,10 @@ abstract class Styles() {
 Color? textShade(BuildContext context, double opacity) =>
     DefaultTextStyle.of(context).style.color?.withValues(alpha: opacity);
 
+/// The color of the perf icons (perf cards, game list tiles, activity).
+Color perfIconColor(BuildContext context) =>
+    ColorScheme.of(context).onSurface.withValues(alpha: 0.6);
+
 Color darken(Color c, [double amount = .1]) {
   assert(amount >= 0 && amount <= 1);
   return Color.lerp(c, Colors.black, amount) ?? c;
@@ -82,8 +100,8 @@ Color lighten(Color c, [double amount = .1]) {
 class const LichessCustomColors({
   required final Color cyan,
   required final Color brag,
-  required final Color good,
-  required final Color error,
+  required final Color green,
+  required final Color red,
   required final Color fancy,
   required final Color purple,
   required final Color primary,
@@ -92,8 +110,8 @@ class const LichessCustomColors({
   LichessCustomColors copyWith({
     Color? cyan,
     Color? brag,
-    Color? good,
-    Color? error,
+    Color? green,
+    Color? red,
     Color? fancy,
     Color? purple,
     Color? primary,
@@ -101,8 +119,8 @@ class const LichessCustomColors({
     return LichessCustomColors(
       cyan: cyan ?? this.cyan,
       brag: brag ?? this.brag,
-      good: good ?? this.good,
-      error: error ?? this.error,
+      green: green ?? this.green,
+      red: red ?? this.red,
       fancy: fancy ?? this.fancy,
       purple: purple ?? this.purple,
       primary: primary ?? this.primary,
@@ -117,8 +135,8 @@ class const LichessCustomColors({
     return LichessCustomColors(
       cyan: Color.lerp(cyan, other.cyan, t) ?? cyan,
       brag: Color.lerp(brag, other.brag, t) ?? brag,
-      good: Color.lerp(good, other.good, t) ?? good,
-      error: Color.lerp(error, other.error, t) ?? error,
+      green: Color.lerp(green, other.green, t) ?? green,
+      red: Color.lerp(red, other.red, t) ?? red,
       fancy: Color.lerp(fancy, other.fancy, t) ?? fancy,
       purple: Color.lerp(purple, other.purple, t) ?? purple,
       primary: Color.lerp(primary, other.primary, t) ?? primary,
@@ -129,8 +147,8 @@ class const LichessCustomColors({
     return copyWith(
       cyan: cyan.harmonizeWith(colorScheme.primary),
       brag: brag.harmonizeWith(colorScheme.primary),
-      good: good.harmonizeWith(colorScheme.primary),
-      error: error.harmonizeWith(colorScheme.primary),
+      green: green.harmonizeWith(colorScheme.primary),
+      red: red.harmonizeWith(colorScheme.primary),
       fancy: fancy.harmonizeWith(colorScheme.primary),
       purple: purple.harmonizeWith(colorScheme.primary),
       primary: primary.harmonizeWith(colorScheme.primary),
@@ -141,14 +159,38 @@ class const LichessCustomColors({
 const lichessCustomColors = LichessCustomColors(
   cyan: LichessColors.cyan,
   brag: LichessColors.brag,
-  good: LichessColors.good,
-  error: LichessColors.error,
+  green: LichessColors.green,
+  red: LichessColors.red,
   fancy: LichessColors.fancy,
   purple: LichessColors.purple,
   primary: LichessColors.primary,
 );
 
+/// The color scheme of the elements that sit next to the board, such as the eval gauge, so that
+/// they match the board colors whatever the app color scheme.
+@immutable
+class const BoardColorScheme(final ColorScheme colorScheme)
+    extends ThemeExtension<BoardColorScheme> {
+  @override
+  BoardColorScheme copyWith({ColorScheme? colorScheme}) =>
+      BoardColorScheme(colorScheme ?? this.colorScheme);
+
+  @override
+  BoardColorScheme lerp(ThemeExtension<BoardColorScheme>? other, double t) {
+    if (other is! BoardColorScheme) {
+      return this;
+    }
+    return BoardColorScheme(ColorScheme.lerp(colorScheme, other.colorScheme, t));
+  }
+}
+
 extension CustomColorsBuildContext on BuildContext {
   LichessCustomColors get lichessColors =>
       Theme.of(this).extension<LichessCustomColors>() ?? lichessCustomColors;
+
+  /// The color scheme of the elements that sit next to the board, see [BoardColorScheme].
+  ///
+  /// Defaults to the app color scheme.
+  ColorScheme get boardColorScheme =>
+      Theme.of(this).extension<BoardColorScheme>()?.colorScheme ?? ColorScheme.of(this);
 }
